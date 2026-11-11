@@ -77,15 +77,30 @@ git clone https://github.com/YOUR_USERNAME/darksouled-ai-camera.git
 cd darksouled-ai-camera
 
 # Build Debug APK
-gradle assembleDebug
+./gradlew assembleDebug
 
 # Run Unit Tests
-gradle :app:testDebugUnitTest
+./gradlew :app:testDebugUnitTest
 
 # Build Release APK
-gradle assembleRelease
+./gradlew assembleRelease
 ```
 Compiled APKs will be located in: `app/build/outputs/apk/`
+
+---
+
+## 📱 Mobile-First GitHub Releases (CI/CD)
+
+The repository includes a ready-to-run GitHub Actions workflow (`.github/workflows/release.yml`) so you can build and download your APK directly from your phone without needing a computer:
+
+1. Push or export the project to your GitHub repository.
+2. In your mobile browser or GitHub app, navigate to **Actions** > **"Build & Release DARKSOULSED® AI Camera"**.
+3. Tap **"Run workflow"** and specify your version tag (e.g. `v1.0.0`).
+4. GitHub Actions will build and attach the following ready-to-download assets to your release:
+   - `DARKSOULSED-AI-Camera-v1.0.0.apk` (Direct install on Android)
+   - `DARKSOULSED-AI-Camera-v1.0.0.app` / `.aab` (Android App Bundle)
+   - `DARKSOULSED-AI-Camera-v1.0.0.zip` (Zip bundle)
+   - `DARKSOULSED-AI-Camera-v1.0.0.tar.gz` (Tarball archive)
 
 ---
 

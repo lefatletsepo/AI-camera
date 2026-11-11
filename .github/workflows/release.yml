@@ -1,35 +1,154 @@
-name: Build and Release Android App
+name: Build & Release DARKSOULSED® AI Camera
 
 on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag Version (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+      release_title:
+        description: 'Release Title'
+        required: false
+        default: 'DARKSOULSED® AI CAMERA v1.0.0 PRO'
   push:
     tags:
-      - 'v*' # Triggers whenever you push a tag starting with 'v' (e.g., v1.0.0)
+      - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
-  build:
-    name: Build APK Release
+  build-and-release:
+    name: Build APK, AAB, ZIP & TAR.GZ
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
+          cache: 'gradle'
 
-      - name: Grant execute permission for gradlew
+      - name: Make Gradle Wrapper Executable
         run: chmod +x gradlew
 
-      - name: Build Release APK
-        run: ./gradlew assembleRelease
+      - name: Setup Signing Keystore
+        run: |
+          echo "Generating build signing keys..."
+          # Generate upload key matching app/build.gradle.kts release signingConfig
+          keytool -genkey -v \
+            -keystore "${GITHUB_WORKSPACE}/my-upload-key.jks" \
+            -storepass "darksouled123" \
+            -alias "upload" \
+            -keypass "darksouled123" \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=DARKSOULSED, OU=CameraLab, O=Darksouled, L=London, ST=GreaterLondon, C=GB"
 
-      - name: Upload Release to GitHub
+          # Also decode debug.keystore if base64 file exists
+          if [ -f "debug.keystore.base64" ]; then
+            base64 -d debug.keystore.base64 > "${GITHUB_WORKSPACE}/debug.keystore"
+          else
+            keytool -genkey -v \
+              -keystore "${GITHUB_WORKSPACE}/debug.keystore" \
+              -storepass "android" \
+              -alias "androiddebugkey" \
+              -keypass "android" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug, O=Android, C=US"
+          fi
+
+      - name: Build Release APK and App Bundle (.AAB / .APP)
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
+          STORE_PASSWORD: darksouled123
+          KEY_PASSWORD: darksouled123
+        run: |
+          ./gradlew assembleRelease bundleRelease --stacktrace
+
+      - name: Package Release Assets (.apk, .app, .zip, .tar.gz)
+        id: package_assets
+        run: |
+          # Determine version tag
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "VERSION_TAG=${TAG}" >> $GITHUB_ENV
+
+          # Prepare release distribution folder
+          mkdir -p dist
+          mkdir -p package_contents
+
+          # Locate Release APK
+          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            APK_PATH=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
+          fi
+
+          # Locate Release AAB (Android App Bundle / .app)
+          AAB_PATH=$(find app/build/outputs/bundle/release -name "*.aab" | head -n 1)
+
+          echo "Found APK at: $APK_PATH"
+          echo "Found AAB at: $AAB_PATH"
+
+          # Copy standalone binaries
+          cp "$APK_PATH" "dist/DARKSOULSED-AI-Camera-${TAG}.apk"
+          if [ -n "$AAB_PATH" ]; then
+            cp "$AAB_PATH" "dist/DARKSOULSED-AI-Camera-${TAG}.aab"
+            cp "$AAB_PATH" "dist/DARKSOULSED-AI-Camera-${TAG}.app"
+            cp "$AAB_PATH" "package_contents/DARKSOULSED-AI-Camera-${TAG}.app"
+          fi
+          cp "$APK_PATH" "package_contents/DARKSOULSED-AI-Camera-${TAG}.apk"
+          cp README.md package_contents/ || true
+
+          # Create .ZIP package
+          cd package_contents
+          zip -r "../dist/DARKSOULSED-AI-Camera-${TAG}.zip" .
+          
+          # Create .TAR.GZ package
+          tar -czvf "../dist/DARKSOULSED-AI-Camera-${TAG}.tar.gz" .
+          cd ..
+
+          echo "Artifacts prepared in dist/:"
+          ls -lh dist/
+
+      - name: Create GitHub Release and Upload Artifacts
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/release/*.apk
+          tag_name: ${{ env.VERSION_TAG }}
+          name: ${{ github.event.inputs.release_title || env.VERSION_TAG }}
+          body: |
+            ## 📸 DARKSOULSED® AI CAMERA (${{ env.VERSION_TAG }})
+            *Professional AI Photography & 4K Cinema Video for Android*
+            *Made with love by Darksouled*
+
+            ### 📦 Release Assets
+            - **`.apk`**: Ready to install directly on Android phones.
+            - **`.app` / `.aab`**: Android App Bundle format for modern packaging and Google Play.
+            - **`.zip`**: Compressed archive containing APK, App Bundle, and documentation.
+            - **`.tar.gz`**: Unix tarball archive containing all binaries.
+
+            ### ✨ Key Features in this Build:
+            - **4-Stage AI Computational Lab**: Bilateral denoising, Laplacian micro-contrast, Pro Max natural skin science, and HDR shadow lifting.
+            - **CameraX 4K UHD Video**: Cinema frame recording with live duration timer and AI 4K Video Lab.
+            - **Before / After Comparison Slider**: Interactive draggable viewport comparing raw captures with AI Pro renders.
+            - **True Scoped Storage**: Saved directly to `Pictures/DARKSOULSED` and `Movies/DARKSOULSED`.
+            - **AMOLED Obsidian Design**: Pitch black `#080808` aesthetic with titanium silver accents and custom lens icon.
+          draft: false
+          prerelease: false
+          files: |
+            dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
