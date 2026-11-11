@@ -7,7 +7,22 @@
 
 ## 📸 Overview
 
-**DARKSOULSED® AI CAMERA** is a flagship-grade Android photography and 4K cinema video application built with Kotlin, Jetpack Compose, and CameraX. It utilizes advanced on-device computational photography to transform ordinary mobile captures into high-dynamic-range, ultra-sharp photographs inspired by modern iPhone Pro Max aesthetics.
+**DARKSOULSED® AI CAMERA** is a flagship-grade photography and 4K cinema video camera available both as a **Native Android Application** (Kotlin, Jetpack Compose, CameraX) and as an **Instant Web Application** deployable to **Vercel** with a single click from GitHub (React 18, Vite, WebRTC, HTML5 Canvas AI pipeline).
+
+---
+
+## ⚡ Deploy Directly to Vercel (1-Click from GitHub)
+
+You can deploy the entire camera application to **Vercel** directly from your phone in under 60 seconds:
+
+1. Push or export this repository to your **GitHub** account.
+2. Open **[vercel.com](https://vercel.com)** in your mobile browser and log in with GitHub.
+3. Tap **"Add New..."** → **"Project"**.
+4. Select your `darksouled-ai-camera` repository from the list.
+5. Vercel automatically detects the pre-configured `vercel.json` and Vite configuration (`npm run build` → `dist`).
+6. Tap **"Deploy"**.
+7. In ~30 seconds, your camera app is live at `https://your-project.vercel.app`!
+8. **Install on Phone**: Open the link in Chrome on Android or Safari on iOS, tap the menu (or share icon), and tap **"Add to Home Screen"** to use it as a full-screen standalone camera app.
 
 ---
 
