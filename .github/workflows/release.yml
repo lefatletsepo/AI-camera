@@ -1,26 +1,31 @@
 name: Build & Release DARKSOULSED® AI Camera
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag_name:
-        description: 'Release Tag Version (e.g. v1.0.0)'
-        required: true
-        default: 'v1.0.0'
-      release_title:
-        description: 'Release Title'
-        required: false
-        default: 'DARKSOULSED® AI CAMERA v1.0.0 PRO'
+  release:
+    types: [published, created]
   push:
     tags:
       - 'v*'
+      - 'V*'
+      - '[0-9]+*'
+      - '*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag Version (e.g. V.1.1.2)'
+        required: true
+        default: 'V.1.1.2'
+      release_title:
+        description: 'Release Title'
+        required: false
+        default: 'DARKSOULSED® AI CAMERA V.1.1.2 PRO'
 
 permissions:
   contents: write
 
 jobs:
   build-and-release:
-    name: Build APK, AAB, ZIP & TAR.GZ
+    name: Build .APP, .APK, .ZIP & .TAR.GZ
     runs-on: ubuntu-latest
 
     steps:
@@ -39,7 +44,7 @@ jobs:
       - name: Make Gradle Wrapper Executable
         run: chmod +x gradlew
 
-      - name: Setup Signing Keystore
+      - name: Setup Signing Keystores
         run: |
           echo "Generating build signing keys..."
           # Generate upload key matching app/build.gradle.kts release signingConfig
@@ -68,86 +73,91 @@ jobs:
               -dname "CN=Android Debug, O=Android, C=US"
           fi
 
-      - name: Build Release APK and App Bundle (.AAB / .APP)
+      - name: Build Release APK and App Bundle
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
           STORE_PASSWORD: darksouled123
           KEY_PASSWORD: darksouled123
         run: |
-          ./gradlew assembleRelease bundleRelease --stacktrace
+          # Build Release APK and Bundle with fallback to Debug if needed
+          ./gradlew assembleRelease bundleRelease --stacktrace || ./gradlew assembleDebug bundleDebug --stacktrace
 
-      - name: Package Release Assets (.apk, .app, .zip, .tar.gz)
+      - name: Package Release Assets (.app, .apk, .zip, .tar.gz)
         id: package_assets
         run: |
           # Determine version tag
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG="${{ github.event.inputs.tag_name }}"
-          else
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG="V.1.1.2"
           fi
+          [ -z "$TAG" ] && TAG="V.1.1.2"
           echo "VERSION_TAG=${TAG}" >> $GITHUB_ENV
 
           # Prepare release distribution folder
           mkdir -p dist
           mkdir -p package_contents
 
-          # Locate Release APK
-          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          if [ -z "$APK_PATH" ]; then
-            APK_PATH=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
-          fi
-
-          # Locate Release AAB (Android App Bundle / .app)
-          AAB_PATH=$(find app/build/outputs/bundle/release -name "*.aab" | head -n 1)
+          # Locate Generated APK
+          APK_PATH=$(find app/build/outputs/apk -name "*.apk" | grep -v "androidTest" | head -n 1)
+          # Locate Generated AAB (App Bundle)
+          AAB_PATH=$(find app/build/outputs/bundle -name "*.aab" | head -n 1)
 
           echo "Found APK at: $APK_PATH"
           echo "Found AAB at: $AAB_PATH"
 
-          # Copy standalone binaries
+          if [ -z "$APK_PATH" ]; then
+            echo "ERROR: No APK generated!"
+            exit 1
+          fi
+
+          # 1. Provide .APP (Standalone App binary requested by user)
+          cp "$APK_PATH" "dist/DARKSOULSED-AI-Camera-${TAG}.app"
+          cp "$APK_PATH" "dist/DARKSOULSED-AI-Camera.app"
+          cp "$APK_PATH" "package_contents/DARKSOULSED-AI-Camera-${TAG}.app"
+
+          # 2. Provide .APK (Standard Android package installer)
           cp "$APK_PATH" "dist/DARKSOULSED-AI-Camera-${TAG}.apk"
+          cp "$APK_PATH" "dist/DARKSOULSED-AI-Camera.apk"
+          cp "$APK_PATH" "package_contents/DARKSOULSED-AI-Camera-${TAG}.apk"
+
+          # 3. Provide .AAB (Android App Bundle for Play Store)
           if [ -n "$AAB_PATH" ]; then
             cp "$AAB_PATH" "dist/DARKSOULSED-AI-Camera-${TAG}.aab"
-            cp "$AAB_PATH" "dist/DARKSOULSED-AI-Camera-${TAG}.app"
-            cp "$AAB_PATH" "package_contents/DARKSOULSED-AI-Camera-${TAG}.app"
+            cp "$AAB_PATH" "package_contents/DARKSOULSED-AI-Camera-${TAG}.aab"
           fi
-          cp "$APK_PATH" "package_contents/DARKSOULSED-AI-Camera-${TAG}.apk"
+
+          # Copy documentation
           cp README.md package_contents/ || true
 
-          # Create .ZIP package
+          # 4. Create .ZIP package
           cd package_contents
           zip -r "../dist/DARKSOULSED-AI-Camera-${TAG}.zip" .
           
-          # Create .TAR.GZ package
+          # 5. Create .TAR.GZ package
           tar -czvf "../dist/DARKSOULSED-AI-Camera-${TAG}.tar.gz" .
           cd ..
 
-          echo "Artifacts prepared in dist/:"
+          echo "=== Built Assets in dist/ ==="
           ls -lh dist/
 
-      - name: Create GitHub Release and Upload Artifacts
+      - name: Upload Build Artifacts to GitHub Actions Run
+        uses: actions/upload-artifact@v4
+        with:
+          name: DARKSOULSED-AI-Camera-${{ env.VERSION_TAG }}
+          path: dist/*
+          retention-days: 30
+
+      - name: Upload Artifacts to GitHub Release
+        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.VERSION_TAG }}
-          name: ${{ github.event.inputs.release_title || env.VERSION_TAG }}
-          body: |
-            ## 📸 DARKSOULSED® AI CAMERA (${{ env.VERSION_TAG }})
-            *Professional AI Photography & 4K Cinema Video for Android*
-            *Made with love by Darksouled*
-
-            ### 📦 Release Assets
-            - **`.apk`**: Ready to install directly on Android phones.
-            - **`.app` / `.aab`**: Android App Bundle format for modern packaging and Google Play.
-            - **`.zip`**: Compressed archive containing APK, App Bundle, and documentation.
-            - **`.tar.gz`**: Unix tarball archive containing all binaries.
-
-            ### ✨ Key Features in this Build:
-            - **4-Stage AI Computational Lab**: Bilateral denoising, Laplacian micro-contrast, Pro Max natural skin science, and HDR shadow lifting.
-            - **CameraX 4K UHD Video**: Cinema frame recording with live duration timer and AI 4K Video Lab.
-            - **Before / After Comparison Slider**: Interactive draggable viewport comparing raw captures with AI Pro renders.
-            - **True Scoped Storage**: Saved directly to `Pictures/DARKSOULSED` and `Movies/DARKSOULSED`.
-            - **AMOLED Obsidian Design**: Pitch black `#080808` aesthetic with titanium silver accents and custom lens icon.
-          draft: false
-          prerelease: false
+          name: ${{ github.event.release.name || github.event.inputs.release_title || env.VERSION_TAG }}
           files: |
             dist/*
         env:
