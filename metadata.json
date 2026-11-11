@@ -1,0 +1,6 @@
+{
+  "name": "DARKSOULSED® Camera",
+  "description": "Professional AI Photography & 4K Video Camera for Android. Made with love by Darksouled.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
